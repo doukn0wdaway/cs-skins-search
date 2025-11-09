@@ -38,7 +38,7 @@ async function generateEmbeddings() {
   const results = [];
   for (let i = 0; i < datasetLength; i++) {
     const item = dataset[i];
-    const text = `${item?.name} ${item?.description} ${item?.team?.name} ${item?.rarity?.name} ${item?.wear?.name}`;
+    const text = `${item?.name} ${item?.description} ${item?.team?.name} ${item?.rarity?.name} ${item?.wear?.name}`; // TODO :ADD COLLECTIONS?
 
     try {
       const textEmbedding = await getEmbedding(text, embedder);

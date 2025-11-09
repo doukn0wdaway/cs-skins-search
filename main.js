@@ -1,50 +1,66 @@
 const { pipeline } = require("@xenova/transformers");
 const fs = require("node:fs");
+const express = require("express");
 
-async function getEmbedding(text, embedder) {
-  const embeddings = await embedder(text);
+let embedderInstance = null;
+
+async function getEmbedding(text) {
+  console.log(`embedderInstance is ${embedderInstance}`);
+  if (!embedderInstance) {
+    embedderInstance = await pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2",
+    );
+  }
+  const embeddings = await embedderInstance(text);
   return averaging(embeddings);
 }
+const app = express();
 
-main();
-
+let embeddings = null;
 function loadEmbeddings() {
-  return JSON.parse(fs.readFileSync("./embeddings.json", "utf-8"));
+  if (!embeddings) {
+    embeddings = JSON.parse(fs.readFileSync("./embeddings.json", "utf-8"));
+  }
+  return embeddings;
 }
 
-async function main() {
-  const searchQuery = "Desert eagle printstream field tested";
-  const embedder = await pipeline(
-    "feature-extraction",
-    "Xenova/all-MiniLM-L6-v2",
-  );
+app.get("/search", async (req, res) => {
+  const { query } = req.query;
+  if (!query) {
+    return res.status(400).json({ error: "Query parameter is required." });
+  }
 
-  const searchQueryEmbedding = await getEmbedding(searchQuery, embedder);
+  const startTime = performance.now();
+  const searchQueryEmbedding = await getEmbedding(query);
   const embeddings = loadEmbeddings();
 
   const results = [];
-  const startTime = performance.now();
+
   embeddings.forEach((item) => {
     const similarity = cosineSimilarity(
       searchQueryEmbedding,
       item.textEmbedding,
     );
-    if (similarity > 0.55) {
+    if (similarity > 0.4) {
       results.push({
         id: item.id,
         similarity,
       });
     }
   });
+
   results.sort((a, b) => b.similarity - a.similarity);
-  // results.sort((a, b) => a.similarity - b.similarity);
 
   const endTime = performance.now();
   const elapsed = endTime - startTime;
 
-  console.log(`Elapsed time: ${elapsed.toFixed(3)} ms`);
-  console.log(results.slice(0, 5));
-}
+  res.json({
+    query,
+    elapsedTime: elapsed.toFixed(3),
+    results: results.slice(0, 5),
+  });
+});
 
 function cosineSimilarity(vecA, vecB) {
   let dotProduct = 0;
@@ -64,7 +80,7 @@ function cosineSimilarity(vecA, vecB) {
 
 function averaging(embeddings) {
   const dims = embeddings.dims; // dims[1] - количество токенов, dims[2] - размерность эмбеддинга
-  const data = embeddings.data; // данные тензора (все эмбеддинги)
+  const data = embeddings.data;
 
   if (dims[1] === 0) {
     throw new Error(
@@ -72,24 +88,20 @@ function averaging(embeddings) {
     );
   }
 
-  const averaged = new Float32Array(dims[2]); // dims[2] — это размерность каждого эмбеддинга
+  const averaged = new Float32Array(dims[2]);
 
-  // Усредняем значения для каждого измерения эмбеддинга
   for (let i = 0; i < dims[1]; i++) {
-    // dims[1] — количество токенов
     for (let j = 0; j < dims[2]; j++) {
-      // dims[2] — размерность эмбеддинга
-      averaged[j] += data[i * dims[2] + j]; // Складываем значения
+      averaged[j] += data[i * dims[2] + j];
     }
   }
 
-  // Делаем усреднение, делим на количество токенов
   for (let j = 0; j < dims[2]; j++) {
-    averaged[j] /= dims[1]; // Делим каждое значение на количество токенов
+    averaged[j] /= dims[1];
   }
 
-  if (averaged.length !== 384) {
-    // console.log(averaged.length);
-  }
   return averaged;
 }
+app.listen(3000, () => {
+  console.log(`Server is running at http://localhost:${3000}`);
+});
