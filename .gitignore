@@ -1,3 +1,5 @@
 dataset.json
 embeddings.json
+only-names.json
+transformed.json
 node_modules
